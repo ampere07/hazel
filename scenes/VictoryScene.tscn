@@ -1,0 +1,36 @@
+[gd_scene load_steps=4 format=3 uid="uid://djyrvyosj6fo3"]
+
+[ext_resource type="Script" uid="uid://bpf7styjxcjyv" path="res://scenes/victory_scene.gd" id="1_1diju"]
+[ext_resource type="Texture2D" uid="uid://b23b6p5wljs2j" path="res://assets/VictoryScene.jpg" id="2_vwvuo"]
+[ext_resource type="AudioStream" uid="uid://28dxnwdn3le0" path="res://assets/audio/VictorySceneMusic.mp3" id="3_1diju"]
+
+[node name="VictoryScene" type="Node2D"]
+script = ExtResource("1_1diju")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+position = Vector2(513.75, 383.5)
+scale = Vector2(0.888169, 0.784694)
+texture = ExtResource("2_vwvuo")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+offset_left = 400.0
+offset_top = 647.0
+offset_right = 607.0
+offset_bottom = 756.0
+
+[node name="StartButton" type="Button" parent="VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 25
+text = "Start"
+
+[node name="QuitButton" type="Button" parent="VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 25
+text = "Quit "
+
+[node name="BgMusic" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("3_1diju")
+autoplay = true
+
+[connection signal="pressed" from="VBoxContainer/StartButton" to="." method="_on_play_game_pressed"]
+[connection signal="pressed" from="VBoxContainer/QuitButton" to="." method="_on_main_menu_pressed"]

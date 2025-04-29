@@ -10,8 +10,8 @@ config_version=5
 
 [application]
 
-config/name="hazel"
-run/main_scene="uid://cdo5dgxo60xjo"
+config/name="Memory Haze"
+run/main_scene="uid://cmrxywstmcv5l"
 config/features=PackedStringArray("4.4", "Forward Plus")
 config/icon="res://icon.svg"
 
