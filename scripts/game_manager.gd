@@ -1,3 +1,4 @@
+#this is my game_manager.gd
 extends Node2D
 
 signal game_completed

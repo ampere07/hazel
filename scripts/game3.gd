@@ -7,13 +7,15 @@ var first_card = null
 var second_card = null
 var can_flip = true
 var matches_found = 0
-var total_pairs = 9
+var total_pairs = 18  # Changed to 18 pairs for 36 cards
 var has_completed = false
 var is_paused = false  # Track if game is paused
 
 static var GAME_COMPLETED_FLAG = false
 
-var card_values = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9]
+# Card values for 36 cards (18 pairs)
+var card_values = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 
+				  10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 15, 16, 16, 17, 17, 18, 18]
 
 var animation_frames = {
 	1: "front1",
@@ -24,7 +26,16 @@ var animation_frames = {
 	6: "front6",
 	7: "front7",
 	8: "front8",
-	9: "front9"
+	9: "front9",
+	10: "front10",
+	11: "front11",
+	12: "front12",
+	13: "front13",
+	14: "front14",
+	15: "front15",
+	16: "front16",
+	17: "front17",
+	18: "front18"
 }
 
 # Pause Menu variables

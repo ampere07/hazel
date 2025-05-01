@@ -7,13 +7,13 @@ var first_card = null
 var second_card = null
 var can_flip = true
 var matches_found = 0
-var total_pairs = 6
+var total_pairs = 12
 var has_completed = false
-var is_paused = false  # Track if game is paused
+var is_paused = false
 
 static var GAME_COMPLETED_FLAG = false
 
-var card_values = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6]
+var card_values = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12]
 
 var animation_frames = {
 	1: "front1",
@@ -24,7 +24,10 @@ var animation_frames = {
 	6: "front6",
 	7: "front7",
 	8: "front8",
-	9: "front9"
+	9: "front9",
+	10: "front10",
+	11: "front11",
+	12: "front12"
 }
 
 # Pause Menu variables

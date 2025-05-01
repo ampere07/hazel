@@ -1,3 +1,4 @@
+#this is my game1.gd
 extends Node2D
 
 signal game_completed
@@ -7,13 +8,13 @@ var first_card = null
 var second_card = null
 var can_flip = true
 var matches_found = 0
-var total_pairs = 3
+var total_pairs = 6
 var has_completed = false
-var is_paused = false  # Track if game is paused
+var is_paused = false
 
 static var GAME_COMPLETED_FLAG = false
 
-var card_values = [1, 1, 2, 2, 3, 3]
+var card_values = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6]
 
 var animation_frames = {
 	1: "front1",
@@ -400,6 +401,12 @@ func _on_card_flipped(card):
 		
 	if first_card == null:
 		first_card = card
+		# Disable flipping immediately after first card is flipped
+		can_flip = false
+		# Small delay to allow the first card animation to complete
+		await get_tree().create_timer(0.1).timeout
+		# Re-enable flipping for second card only
+		can_flip = true
 	elif second_card == null and card != first_card:
 		second_card = card
 		can_flip = false

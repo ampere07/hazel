@@ -1,20 +1,560 @@
 [gd_scene load_steps=68 format=3 uid="uid://c1ecgqv5vm6di"]
 
-[ext_resource type="Script" uid="uid://70xyr8and7tk" path="res://scripts/game2.gd" id="1_dfj51"]
 [ext_resource type="Script" uid="uid://ce1abumip4534" path="res://scripts/door_script.gd" id="2_dfj51"]
 [ext_resource type="Texture2D" uid="uid://ccg5qlod32ha7" path="res://assets/woodfloor1.png" id="2_ys01g"]
 [ext_resource type="Texture2D" uid="uid://bh6kjn48ohiuq" path="res://assets/doorclosed.png" id="3_ys01g"]
 [ext_resource type="Script" uid="uid://1dryq6yqxex1" path="res://scripts/card.gd" id="4_qoipi"]
-[ext_resource type="Texture2D" uid="uid://b2v8jyvt1d85y" path="res://assets/spritesheet.png" id="5_rt1vr"]
 [ext_resource type="Texture2D" uid="uid://biye0dhdbokbh" path="res://assets/wall.jpg" id="6_koqqk"]
+[ext_resource type="Texture2D" uid="uid://bt8dy08uxo7fg" path="res://assets/newcards2-removebg-preview.png" id="7_rt1vr"]
 [ext_resource type="Script" uid="uid://iu2k1d6n2vpu" path="res://scripts/player.gd" id="7_wx8ly"]
 [ext_resource type="Texture2D" uid="uid://bpslq6xmxms0h" path="res://assets/spr_idle_strip9.png" id="8_1bec7"]
+[ext_resource type="Texture2D" uid="uid://cogxulugtty6w" path="res://assets/newcards-removebg-preview.png" id="8_koqqk"]
 [ext_resource type="Texture2D" uid="uid://dgj3eyr6jkgu" path="res://assets/mediumDoor.png" id="8_ys01g"]
 [ext_resource type="Texture2D" uid="uid://bj0jjkmsdex4w" path="res://assets/spr_mining_strip10.png" id="9_1r76p"]
 [ext_resource type="Texture2D" uid="uid://d2yki3sqg0xhh" path="res://assets/spr_run_strip8.png" id="10_o2xul"]
 [ext_resource type="Script" uid="uid://ddqsrlwmoy5gx" path="res://scripts/cursor.gd" id="11_xydy8"]
 [ext_resource type="AudioStream" uid="uid://dl4gko88dvka3" path="res://assets/audio/mainmenuBg.mp3" id="14_qoipi"]
 [ext_resource type="AudioStream" uid="uid://cvtpibaxtq527" path="res://assets/audio/MineFx.mp3" id="14_rt1vr"]
+
+[sub_resource type="GDScript" id="GDScript_ys01g"]
+script/source = "extends Node2D
+
+signal game_completed
+signal pause_state_changed(is_paused)  # New signal to notify other nodes about pause state
+
+var first_card = null
+var second_card = null
+var can_flip = true
+var matches_found = 0
+var total_pairs = 12
+var has_completed = false
+var is_paused = false
+
+static var GAME_COMPLETED_FLAG = false
+
+var card_values = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12]
+
+var animation_frames = {
+	1: \"front1\",
+	2: \"front2\",
+	3: \"front3\",
+	4: \"front4\",
+	5: \"front5\",
+	6: \"front6\",
+	7: \"front7\",
+	8: \"front8\",
+	9: \"front9\",
+	10: \"front10\",
+	11: \"front11\",
+	12: \"front12\"
+}
+
+# Pause Menu variables
+var pause_panel
+var resume_button
+var restart_button
+var main_menu_button
+var pause_button
+
+# Character reference (will be found at runtime)
+var player_character = null
+var original_player_position = Vector2.ZERO
+
+func _ready():
+	name = \"game_manager\"
+	add_to_group(\"game_manager\")
+	
+	GAME_COMPLETED_FLAG = false
+	
+	randomize()
+	card_values.shuffle()
+	
+	initialize_cards()
+	
+	# Setup pause menu
+	setup_pause_menu()
+	
+	# Find the player character
+	call_deferred(\"find_player_character\")
+	
+	print(\"Game Manager initialized with \" + str(total_pairs) + \" pairs for MEDIUM level\")
+	
+	await get_tree().create_timer(0.1).timeout
+	ensure_all_cards_face_down()
+
+func find_player_character():
+	# Try to find the player character using various approaches
+	# Try by group first
+	var characters = get_tree().get_nodes_in_group(\"player\")
+	if characters.size() > 0:
+		player_character = characters[0]
+		original_player_position = player_character.position
+		print(\"Found player character in 'player' group\")
+		return
+	
+	# Try by common names
+	var common_names = [\"Player\", \"Character\", \"PlayerCharacter\", \"Cursor\", \"MainCharacter\"]
+	for name in common_names:
+		var node = get_tree().current_scene.find_child(name, true, false)
+		if node:
+			player_character = node
+			original_player_position = player_character.position
+			print(\"Found player character with name: \" + name)
+			return
+	
+	# Try to find nodes with \"player\" or \"character\" in their name
+	var scene_nodes = get_tree().get_nodes_in_group(\"\")
+	for node in scene_nodes:
+		if \"player\" in node.name.to_lower() or \"character\" in node.name.to_lower() or \"cursor\" in node.name.to_lower():
+			player_character = node
+			original_player_position = player_character.position
+			print(\"Found player character with name containing 'player' or 'character': \" + node.name)
+			return
+	
+	print(\"Could not find player character\")
+
+func setup_pause_menu():
+	# Create pause button (using text instead of texture)
+	pause_button = Button.new()
+	pause_button.name = \"PauseButton\"
+	pause_button.text = \"||\"
+	pause_button.size = Vector2(30, 30)
+	pause_button.position = Vector2(20, 20)
+	
+	# Set up styling
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0.3, 0.3, 0.3, 0.8)  # Gray background
+	style.corner_radius_top_left = 5
+	style.corner_radius_top_right = 5
+	style.corner_radius_bottom_left = 5
+	style.corner_radius_bottom_right = 5
+	pause_button.add_theme_stylebox_override(\"normal\", style)
+	
+	# White text
+	pause_button.add_theme_color_override(\"font_color\", Color(1, 1, 1, 1))
+	pause_button.add_theme_color_override(\"font_hover_color\", Color(1, 1, 1, 1))
+	pause_button.add_theme_color_override(\"font_pressed_color\", Color(0.8, 0.8, 0.8, 1))
+	
+	# Connect signal and add to scene
+	pause_button.pressed.connect(_on_pause_button_pressed)
+	add_child(pause_button)
+	
+	# Create pause panel
+	pause_panel = Panel.new()
+	pause_panel.name = \"PausePanel\"
+	pause_panel.size = Vector2(300, 250)
+	pause_panel.position = Vector2(get_viewport_rect().size.x/2 - 150, get_viewport_rect().size.y/2 - 125)
+	
+	# Panel styling
+	var panel_style = StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.2, 0.2, 0.2, 0.9)  # Dark gray background
+	panel_style.corner_radius_top_left = 10
+	panel_style.corner_radius_top_right = 10
+	panel_style.corner_radius_bottom_left = 10
+	panel_style.corner_radius_bottom_right = 10
+	panel_style.border_width_left = 2
+	panel_style.border_width_top = 2
+	panel_style.border_width_right = 2
+	panel_style.border_width_bottom = 2
+	panel_style.border_color = Color(0.5, 0.5, 0.5)
+	pause_panel.add_theme_stylebox_override(\"panel\", panel_style)
+	
+	pause_panel.visible = false
+	add_child(pause_panel)
+	
+	# Create panel title
+	var panel_title = Label.new()
+	panel_title.text = \"PAUSED\"
+	panel_title.position = Vector2(110, 30)
+	panel_title.add_theme_font_size_override(\"font_size\", 24)
+	panel_title.add_theme_color_override(\"font_color\", Color(1, 1, 1))
+	pause_panel.add_child(panel_title)
+	
+	# Create Resume Button
+	resume_button = Button.new()
+	resume_button.text = \"Resume\"
+	resume_button.size = Vector2(200, 40)
+	resume_button.position = Vector2(50, 80)
+	resume_button.pressed.connect(_on_resume_button_pressed)
+	pause_panel.add_child(resume_button)
+	
+	# Create Restart Button
+	restart_button = Button.new()
+	restart_button.text = \"Restart\"
+	restart_button.size = Vector2(200, 40)
+	restart_button.position = Vector2(50, 130)
+	restart_button.pressed.connect(_on_restart_button_pressed)
+	pause_panel.add_child(restart_button)
+	
+	# Create Main Menu Button
+	main_menu_button = Button.new()
+	main_menu_button.text = \"Main Menu\"
+	main_menu_button.size = Vector2(200, 40)
+	main_menu_button.position = Vector2(50, 180)
+	main_menu_button.pressed.connect(_on_main_menu_button_pressed)
+	pause_panel.add_child(main_menu_button)
+	
+	# Style all buttons
+	for button in [resume_button, restart_button, main_menu_button]:
+		var button_style = StyleBoxFlat.new()
+		button_style.bg_color = Color(0.3, 0.3, 0.3)
+		button_style.corner_radius_top_left = 5
+		button_style.corner_radius_top_right = 5
+		button_style.corner_radius_bottom_left = 5
+		button_style.corner_radius_bottom_right = 5
+		
+		button.add_theme_stylebox_override(\"normal\", button_style)
+		button.add_theme_color_override(\"font_color\", Color(1, 1, 1))
+		button.add_theme_color_override(\"font_hover_color\", Color(1, 1, 1))
+	
+		# Hover style
+		var hover_style = StyleBoxFlat.new()
+		hover_style.bg_color = Color(0.4, 0.4, 0.4)  # Slightly lighter when hovering
+		hover_style.corner_radius_top_left = 5
+		hover_style.corner_radius_top_right = 5
+		hover_style.corner_radius_bottom_left = 5
+		hover_style.corner_radius_bottom_right = 5
+		
+		button.add_theme_stylebox_override(\"hover\", hover_style)
+	
+	# Set buttons to not be paused when game is paused
+	pause_button.process_mode = Node.PROCESS_MODE_ALWAYS
+	resume_button.process_mode = Node.PROCESS_MODE_ALWAYS
+	restart_button.process_mode = Node.PROCESS_MODE_ALWAYS
+	main_menu_button.process_mode = Node.PROCESS_MODE_ALWAYS
+	pause_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+
+func _on_pause_button_pressed():
+	print(\"Pause button pressed\")
+	pause_game()
+
+func _on_resume_button_pressed():
+	print(\"Resume button pressed\")
+	resume_game()
+
+func _on_restart_button_pressed():
+	print(\"Restart button pressed\")
+	resume_game()  # First resume to unpause
+	reset_game()   # Then reset
+	reset_player_position()  # Reset player position
+
+func _on_main_menu_button_pressed():
+	print(\"Main menu button pressed\")
+	resume_game()  # First resume to unpause
+	# Go to main menu scene
+	var result = get_tree().change_scene_to_file(\"res://scenes/MainMenuScene.tscn\")
+	if result != OK:
+		print(\"Failed to change to main menu scene. Trying alternatives...\")
+		var alternative_paths = [
+			\"res://MainMenuScene.tscn\",
+			\"res://Scenes/MainMenuScene.tscn\",
+			\"res://scenes/MainMenu.tscn\",
+			\"res://MainMenu.tscn\"
+		]
+		
+		for path in alternative_paths:
+			result = get_tree().change_scene_to_file(path)
+			if result == OK:
+				print(\"Successfully changed to: \" + path)
+				return
+		
+		print(\"Could not find main menu scene. Listing available scenes:\")
+		var dir = DirAccess.open(\"res://\")
+		if dir:
+			dir.list_dir_begin()
+			var file_name = dir.get_next()
+			while file_name != \"\":
+				if file_name.ends_with(\".tscn\"):
+					print(\"- \" + file_name)
+				file_name = dir.get_next()
+			dir.list_dir_end()
+
+func pause_game():
+	print(\"Pausing game\")
+	is_paused = true
+	pause_panel.visible = true
+	# Disable card interaction
+	can_flip = false
+	
+	# Disable character movement by emitting a signal
+	emit_signal(\"pause_state_changed\", true)
+	
+	# Try to directly disable movement on common player controllers
+	if player_character:
+		# Try various common movement control variables
+		if \"can_move\" in player_character:
+			player_character.can_move = false
+		if \"enabled\" in player_character:
+			player_character.enabled = false
+		if \"active\" in player_character:
+			player_character.active = false
+		
+		# Pause any animations if there's an animator
+		if player_character.has_node(\"AnimationPlayer\"):
+			var animator = player_character.get_node(\"AnimationPlayer\")
+			animator.pause()
+		if player_character.has_node(\"AnimatedSprite2D\"):
+			var sprite = player_character.get_node(\"AnimatedSprite2D\")
+			if sprite.is_playing():
+				sprite.pause()
+	
+	# Pause the scene tree but not the UI
+	get_tree().paused = true
+
+func resume_game():
+	print(\"Resuming game\")
+	is_paused = false
+	pause_panel.visible = false
+	# Re-enable card interaction if game not completed
+	if !has_completed:
+		can_flip = true
+	
+	# Enable character movement
+	emit_signal(\"pause_state_changed\", false)
+	
+	# Try to directly enable movement on common player controllers
+	if player_character:
+		# Try various common movement control variables
+		if \"can_move\" in player_character:
+			player_character.can_move = true
+		if \"enabled\" in player_character:
+			player_character.enabled = true
+		if \"active\" in player_character:
+			player_character.active = true
+		
+		# Resume any animations if there's an animator
+		if player_character.has_node(\"AnimationPlayer\"):
+			var animator = player_character.get_node(\"AnimationPlayer\")
+			animator.play()
+		if player_character.has_node(\"AnimatedSprite2D\"):
+			var sprite = player_character.get_node(\"AnimatedSprite2D\")
+			sprite.play()
+	
+	# Unpause the scene tree
+	get_tree().paused = false
+
+func reset_player_position():
+	if player_character and original_player_position != Vector2.ZERO:
+		print(\"Resetting player position to: \" + str(original_player_position))
+		player_character.position = original_player_position
+		
+		# If there's a physics body, reset velocity too
+		if \"velocity\" in player_character:
+			player_character.velocity = Vector2.ZERO
+		if \"linear_velocity\" in player_character:
+			player_character.linear_velocity = Vector2.ZERO
+
+# Handle keyboard input for pause
+func _input(event):
+	if event.is_action_pressed(\"ui_cancel\"):  # ESC key
+		if is_paused:
+			resume_game()
+		else:
+			pause_game()
+
+func initialize_cards():
+	var cards = get_tree().get_nodes_in_group(\"cards\")
+	var card_index = 0
+	
+	for card in cards:
+		if card_index < card_values.size():
+			card.card_value = card_values[card_index]
+			
+			assign_card_front_animation(card, card_values[card_index])
+			
+			card.connect(\"card_flipped\", Callable(self, \"_on_card_flipped\"))
+			card_index += 1
+	
+	print(\"Initialized \" + str(cards.size()) + \" cards\")
+
+func assign_card_front_animation(card, value):
+	if not value in animation_frames:
+		print(\"Warning: Card value \" + str(value) + \" doesn't have a corresponding animation\")
+		return
+		
+	var animation_name = animation_frames[value]
+	
+	if card.has_method(\"set_front_animation\"):
+		card.call(\"set_front_animation\", animation_name)
+		print(\"Assigned card front animation: \" + animation_name)
+		return
+	
+	if \"front_animation\" in card:
+		card.front_animation = animation_name
+		print(\"Assigned card.front_animation property: \" + animation_name)
+
+func ensure_all_cards_face_down():
+	var cards = get_tree().get_nodes_in_group(\"cards\")
+	
+	for card in cards:
+		if card.has_method(\"flip_to_back\"):
+			card.flip_to_back()
+		elif card.has_node(\"AnimatedSprite2D\"):
+			var sprite = card.get_node(\"AnimatedSprite2D\")
+			if sprite.has_method(\"play\"):
+				sprite.play(\"back\")
+	
+	print(\"All cards set to face down position\")
+
+func set_card_front_animation(card, value):
+	if not value in animation_frames:
+		print(\"Warning: Card value \" + str(value) + \" doesn't have a corresponding animation\")
+		return
+		
+	var animation_name = animation_frames[value]
+	
+	if card.has_method(\"set_front_animation\"):
+		card.call(\"set_front_animation\", animation_name)
+		print(\"Set card animation via set_front_animation method: \" + animation_name)
+		return
+	
+	if \"front_animation\" in card:
+		card.front_animation = animation_name
+		print(\"Set card.front_animation property: \" + animation_name)
+		
+	if card.has_node(\"AnimatedSprite2D\"):
+		var sprite = card.get_node(\"AnimatedSprite2D\")
+		
+		if sprite.has_method(\"play\"):
+			sprite.play(animation_name)
+			print(\"Playing animation directly: \" + animation_name)
+
+func _on_card_flipped(card):
+	if !can_flip or is_paused:
+		return
+		
+	if first_card == null:
+		first_card = card
+	elif second_card == null and card != first_card:
+		second_card = card
+		can_flip = false
+		
+		if first_card.card_value == second_card.card_value:
+			await get_tree().create_timer(0.5).timeout
+			
+			first_card.set_matched()
+			second_card.set_matched()
+			
+			matches_found += 1
+			print(\"Match found! Total matches: \" + str(matches_found) + \"/\" + str(total_pairs))
+			
+			first_card = null
+			second_card = null
+			can_flip = true
+			
+			if matches_found >= total_pairs and !has_completed:
+				await get_tree().create_timer(0.5).timeout
+				on_game_completed()
+		else:
+			await get_tree().create_timer(1.0).timeout
+			
+			first_card.flip_to_back()
+			second_card.flip_to_back()
+			
+			first_card = null
+			second_card = null
+			can_flip = true
+
+func on_game_completed():
+	print(\"Congratulations! You found all matches!\")
+	has_completed = true
+	
+	GAME_COMPLETED_FLAG = true
+	print(\"Set static GAME_COMPLETED_FLAG = true\")
+	
+	get_tree().set_meta(\"game_completed\", true)
+	print(\"Set SceneTree metadata: game_completed = true\")
+	
+	var coordinator = Node.new()
+	coordinator.name = \"GameCompletedCoordinator\"
+	coordinator.set_meta(\"game_completed\", true)
+	get_tree().root.add_child(coordinator)
+	print(\"Added GameCompletedCoordinator node\")
+	
+	emit_signal(\"game_completed\")
+	print(\"Game completed signal emitted\")
+	
+	notify_door()
+	
+	show_game_completed_effects()
+	
+	print_rich(\"[color=yellow]The door is now unlocked! Mine the door to proceed to the HARD level.[/color]\")
+
+func notify_door():
+	var door = get_tree().current_scene.find_child(\"Door\", true, false)
+	
+	if door:
+		print(\"Game Manager: Found door at \" + str(door.get_path()))
+		
+		if door.has_method(\"on_game_completed\"):
+			door.call(\"on_game_completed\")
+			print(\"Called door.on_game_completed()\")
+		
+		door.set(\"game_completed\", true)
+		print(\"Set door.game_completed = true directly\")
+		
+		door.set(\"next_scene\", get_next_scene_path())
+		print(\"Set door.next_scene for next level\")
+		
+		var tween = create_tween()
+		tween.tween_property(door, \"modulate\", Color(1.5, 1.5, 0.5), 0.5)
+		tween.tween_property(door, \"modulate\", Color(1.0, 1.0, 1.0), 0.5)
+		tween.tween_property(door, \"modulate\", Color(1.5, 1.5, 0.5), 0.5)
+		tween.tween_property(door, \"modulate\", Color(1.0, 1.0, 1.0), 0.5)
+	else:
+		print(\"Game Manager: Door not found!\")
+		
+		var potential_doors = []
+		for node in get_tree().get_nodes_in_group(\"\"):
+			if \"door\" in node.name.to_lower():
+				potential_doors.append(node)
+		
+		print(\"Found \" + str(potential_doors.size()) + \" potential door nodes\")
+		for pot_door in potential_doors:
+			print(\" - \" + pot_door.name + \" at \" + str(pot_door.get_path()))
+			if pot_door.has_method(\"on_game_completed\"):
+				pot_door.call(\"on_game_completed\")
+				print(\"Called potential door's on_game_completed()\")
+
+func get_next_scene_path():
+	return \"res://scenes/GameSceneHard.tscn\"
+
+func is_game_completed():
+	return has_completed || matches_found >= total_pairs
+
+func show_game_completed_effects():
+	var cards = get_tree().get_nodes_in_group(\"cards\")
+	
+	for card in cards:
+		var tween = create_tween()
+		tween.tween_property(card, \"modulate\", Color(1.5, 1.5, 1.5), 0.5)
+		tween.tween_property(card, \"modulate\", Color(1, 1, 1, 0.7), 0.5)
+
+func reset_game():
+	first_card = null
+	second_card = null
+	can_flip = true
+	matches_found = 0
+	has_completed = false
+	GAME_COMPLETED_FLAG = false
+	
+	card_values.shuffle()
+	
+	var cards = get_tree().get_nodes_in_group(\"cards\")
+	var card_index = 0
+	
+	for card in cards:
+		card.matched = false
+		card.modulate = Color.WHITE
+		card.flip_to_back()
+		card.card_value = card_values[card_index]
+		
+		assign_card_front_animation(card, card_values[card_index])
+		
+		card_index += 1
+	
+	ensure_all_cards_face_down()
+"
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_qoipi"]
 texture = ExtResource("2_ys01g")
@@ -33,113 +573,107 @@ size = Vector2(948.5, 40.5)
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_rt1vr"]
 size = Vector2(42.5, 763)
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_koqqk"]
-size = Vector2(86, 121)
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_1bec7"]
+size = Vector2(80, 72)
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_wa2qy"]
-atlas = ExtResource("5_rt1vr")
-region = Rect2(66, 630, 66, 90)
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_wx8ly"]
+size = Vector2(64.2308, 98.4616)
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_owrl1"]
-atlas = ExtResource("5_rt1vr")
-region = Rect2(66, 630, 66, 90)
+[sub_resource type="AtlasTexture" id="AtlasTexture_nmup3"]
+atlas = ExtResource("7_rt1vr")
+region = Rect2(76, 0, 76, 85)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_rtwif"]
+atlas = ExtResource("8_koqqk")
+region = Rect2(234, 0, 78, 85)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_a84hr"]
+atlas = ExtResource("8_koqqk")
+region = Rect2(154, 0, 77, 85)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_kmh55"]
+atlas = ExtResource("8_koqqk")
+region = Rect2(154, 85, 77, 85)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_b2jmc"]
+atlas = ExtResource("8_koqqk")
+region = Rect2(234, 86, 78, 86)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_6dbuv"]
+atlas = ExtResource("8_koqqk")
+region = Rect2(156, 86, 78, 86)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_ly2mo"]
+atlas = ExtResource("8_koqqk")
+region = Rect2(234, 172, 78, 86)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_70wkr"]
+atlas = ExtResource("8_koqqk")
+region = Rect2(156, 172, 78, 86)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_l0bfa"]
+atlas = ExtResource("8_koqqk")
+region = Rect2(77, 172, 77, 86)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_4jx6m"]
+atlas = ExtResource("8_koqqk")
+region = Rect2(0, 172, 73, 86)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_j51f3"]
+atlas = ExtResource("8_koqqk")
+region = Rect2(0, 344, 73, 86)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_th3x7"]
-atlas = ExtResource("5_rt1vr")
-region = Rect2(462, 630, 66, 90)
+atlas = ExtResource("8_koqqk")
+region = Rect2(234, 258, 78, 86)
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_dfj51"]
-atlas = ExtResource("5_rt1vr")
-region = Rect2(594, 360, 66, 90)
+[sub_resource type="AtlasTexture" id="AtlasTexture_qb3hh"]
+atlas = ExtResource("8_koqqk")
+region = Rect2(156, 258, 78, 86)
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_ys01g"]
-atlas = ExtResource("5_rt1vr")
-region = Rect2(198, 180, 66, 90)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_qoipi"]
-atlas = ExtResource("5_rt1vr")
-region = Rect2(66, 360, 66, 90)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_m2r1n"]
-atlas = ExtResource("5_rt1vr")
-region = Rect2(330, 540, 66, 90)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_uervj"]
-atlas = ExtResource("5_rt1vr")
-region = Rect2(594, 450, 66, 90)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_rt1vr"]
-atlas = ExtResource("5_rt1vr")
-region = Rect2(330, 90, 66, 90)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_koqqk"]
-atlas = ExtResource("5_rt1vr")
-region = Rect2(66, 0, 66, 90)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_wx8ly"]
-atlas = ExtResource("5_rt1vr")
-region = Rect2(198, 0, 66, 90)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_1bec7"]
-atlas = ExtResource("5_rt1vr")
-region = Rect2(462, 540, 66, 90)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_1r76p"]
-atlas = ExtResource("5_rt1vr")
-region = Rect2(726, 450, 66, 90)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_o2xul"]
-atlas = ExtResource("5_rt1vr")
-region = Rect2(792, 450, 66, 90)
-
-[sub_resource type="SpriteFrames" id="SpriteFrames_wx8ly"]
+[sub_resource type="SpriteFrames" id="SpriteFrames_1bec7"]
 animations = [{
 "frames": [{
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_wa2qy")
+"texture": SubResource("AtlasTexture_nmup3")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_owrl1")
+"texture": SubResource("AtlasTexture_nmup3")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_wa2qy")
+"texture": SubResource("AtlasTexture_nmup3")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_owrl1")
+"texture": SubResource("AtlasTexture_nmup3")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_wa2qy")
+"texture": SubResource("AtlasTexture_nmup3")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_owrl1")
+"texture": SubResource("AtlasTexture_nmup3")
 }],
 "loop": true,
 "name": &"back",
 "speed": 7.0
 }, {
-"frames": [],
-"loop": true,
-"name": &"front",
-"speed": 5.0
-}, {
 "frames": [{
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_th3x7")
+"texture": SubResource("AtlasTexture_rtwif")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_th3x7")
+"texture": SubResource("AtlasTexture_rtwif")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_th3x7")
+"texture": SubResource("AtlasTexture_rtwif")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_th3x7")
+"texture": SubResource("AtlasTexture_rtwif")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_th3x7")
+"texture": SubResource("AtlasTexture_rtwif")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_th3x7")
+"texture": SubResource("AtlasTexture_rtwif")
 }],
 "loop": true,
 "name": &"front1",
@@ -147,22 +681,22 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_dfj51")
+"texture": SubResource("AtlasTexture_a84hr")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_dfj51")
+"texture": SubResource("AtlasTexture_a84hr")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_dfj51")
+"texture": SubResource("AtlasTexture_a84hr")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_dfj51")
+"texture": SubResource("AtlasTexture_a84hr")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_dfj51")
+"texture": SubResource("AtlasTexture_a84hr")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_dfj51")
+"texture": SubResource("AtlasTexture_a84hr")
 }],
 "loop": true,
 "name": &"front10",
@@ -170,22 +704,22 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_ys01g")
+"texture": SubResource("AtlasTexture_kmh55")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_ys01g")
+"texture": SubResource("AtlasTexture_kmh55")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_ys01g")
+"texture": SubResource("AtlasTexture_kmh55")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_ys01g")
+"texture": SubResource("AtlasTexture_kmh55")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_ys01g")
+"texture": SubResource("AtlasTexture_kmh55")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_ys01g")
+"texture": SubResource("AtlasTexture_kmh55")
 }],
 "loop": true,
 "name": &"front11",
@@ -193,22 +727,22 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_qoipi")
+"texture": SubResource("AtlasTexture_b2jmc")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_qoipi")
+"texture": SubResource("AtlasTexture_b2jmc")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_qoipi")
+"texture": SubResource("AtlasTexture_b2jmc")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_qoipi")
+"texture": SubResource("AtlasTexture_b2jmc")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_qoipi")
+"texture": SubResource("AtlasTexture_b2jmc")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_qoipi")
+"texture": SubResource("AtlasTexture_b2jmc")
 }],
 "loop": true,
 "name": &"front12",
@@ -216,22 +750,22 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_m2r1n")
+"texture": SubResource("AtlasTexture_6dbuv")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_m2r1n")
+"texture": SubResource("AtlasTexture_6dbuv")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_m2r1n")
+"texture": SubResource("AtlasTexture_6dbuv")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_m2r1n")
+"texture": SubResource("AtlasTexture_6dbuv")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_m2r1n")
+"texture": SubResource("AtlasTexture_6dbuv")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_m2r1n")
+"texture": SubResource("AtlasTexture_6dbuv")
 }],
 "loop": true,
 "name": &"front2",
@@ -239,22 +773,22 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_uervj")
+"texture": SubResource("AtlasTexture_ly2mo")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_uervj")
+"texture": SubResource("AtlasTexture_ly2mo")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_uervj")
+"texture": SubResource("AtlasTexture_ly2mo")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_uervj")
+"texture": SubResource("AtlasTexture_ly2mo")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_uervj")
+"texture": SubResource("AtlasTexture_ly2mo")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_uervj")
+"texture": SubResource("AtlasTexture_ly2mo")
 }],
 "loop": true,
 "name": &"front3",
@@ -262,22 +796,22 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_rt1vr")
+"texture": SubResource("AtlasTexture_70wkr")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_rt1vr")
+"texture": SubResource("AtlasTexture_70wkr")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_rt1vr")
+"texture": SubResource("AtlasTexture_70wkr")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_rt1vr")
+"texture": SubResource("AtlasTexture_70wkr")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_rt1vr")
+"texture": SubResource("AtlasTexture_70wkr")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_rt1vr")
+"texture": SubResource("AtlasTexture_70wkr")
 }],
 "loop": true,
 "name": &"front4",
@@ -285,22 +819,22 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_koqqk")
+"texture": SubResource("AtlasTexture_l0bfa")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_koqqk")
+"texture": SubResource("AtlasTexture_l0bfa")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_koqqk")
+"texture": SubResource("AtlasTexture_l0bfa")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_koqqk")
+"texture": SubResource("AtlasTexture_l0bfa")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_koqqk")
+"texture": SubResource("AtlasTexture_l0bfa")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_koqqk")
+"texture": SubResource("AtlasTexture_l0bfa")
 }],
 "loop": true,
 "name": &"front5",
@@ -308,22 +842,22 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_wx8ly")
+"texture": SubResource("AtlasTexture_4jx6m")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_wx8ly")
+"texture": SubResource("AtlasTexture_4jx6m")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_wx8ly")
+"texture": SubResource("AtlasTexture_4jx6m")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_wx8ly")
+"texture": SubResource("AtlasTexture_4jx6m")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_wx8ly")
+"texture": SubResource("AtlasTexture_4jx6m")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_wx8ly")
+"texture": SubResource("AtlasTexture_4jx6m")
 }],
 "loop": true,
 "name": &"front6",
@@ -331,22 +865,22 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_1bec7")
+"texture": SubResource("AtlasTexture_j51f3")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_1bec7")
+"texture": SubResource("AtlasTexture_j51f3")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_1bec7")
+"texture": SubResource("AtlasTexture_j51f3")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_1bec7")
+"texture": SubResource("AtlasTexture_j51f3")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_1bec7")
+"texture": SubResource("AtlasTexture_j51f3")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_1bec7")
+"texture": SubResource("AtlasTexture_j51f3")
 }],
 "loop": true,
 "name": &"front7",
@@ -354,22 +888,22 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_1r76p")
+"texture": SubResource("AtlasTexture_th3x7")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_1r76p")
+"texture": SubResource("AtlasTexture_th3x7")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_1r76p")
+"texture": SubResource("AtlasTexture_th3x7")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_1r76p")
+"texture": SubResource("AtlasTexture_th3x7")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_1r76p")
+"texture": SubResource("AtlasTexture_th3x7")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_1r76p")
+"texture": SubResource("AtlasTexture_th3x7")
 }],
 "loop": true,
 "name": &"front8",
@@ -377,30 +911,27 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_o2xul")
+"texture": SubResource("AtlasTexture_qb3hh")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_o2xul")
+"texture": SubResource("AtlasTexture_qb3hh")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_o2xul")
+"texture": SubResource("AtlasTexture_qb3hh")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_o2xul")
+"texture": SubResource("AtlasTexture_qb3hh")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_o2xul")
+"texture": SubResource("AtlasTexture_qb3hh")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_o2xul")
+"texture": SubResource("AtlasTexture_qb3hh")
 }],
 "loop": true,
 "name": &"front9",
 "speed": 5.0
 }]
-
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_1bec7"]
-size = Vector2(80, 72)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_1r76p"]
 size = Vector2(20, 27.4717)
@@ -617,7 +1148,7 @@ radius = 6.03773
 height = 12.0755
 
 [node name="GameSceneMedium" type="Node2D"]
-script = ExtResource("1_dfj51")
+script = SubResource("GDScript_ys01g")
 
 [node name="TileMap" type="TileMap" parent="."]
 tile_set = SubResource("TileSet_rt1vr")
@@ -646,186 +1177,6 @@ shape = SubResource("RectangleShape2D_rt1vr")
 [node name="TopBoundary2" type="CollisionShape2D" parent="MapBoundaries"]
 position = Vector2(259, -356)
 shape = SubResource("RectangleShape2D_ys01g")
-
-[node name="Card1" type="Area2D" parent="."]
-position = Vector2(891, 185)
-scale = Vector2(1.3, 1.3)
-script = ExtResource("4_qoipi")
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Card1"]
-position = Vector2(0, 118.5)
-shape = SubResource("RectangleShape2D_koqqk")
-
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card1"]
-position = Vector2(0, 119)
-scale = Vector2(1.5, 1.5)
-sprite_frames = SubResource("SpriteFrames_wx8ly")
-animation = &"front3"
-
-[node name="Card2" type="Area2D" parent="."]
-position = Vector2(593, 453)
-scale = Vector2(1.3, 1.3)
-script = ExtResource("4_qoipi")
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Card2"]
-position = Vector2(0, 118.5)
-shape = SubResource("RectangleShape2D_koqqk")
-
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card2"]
-position = Vector2(0, 119)
-scale = Vector2(1.5, 1.5)
-sprite_frames = SubResource("SpriteFrames_wx8ly")
-animation = &"front3"
-
-[node name="Card3" type="Area2D" parent="."]
-position = Vector2(280, 182)
-scale = Vector2(1.3, 1.3)
-script = ExtResource("4_qoipi")
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Card3"]
-position = Vector2(0, 118.5)
-shape = SubResource("RectangleShape2D_koqqk")
-
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card3"]
-position = Vector2(0, 119)
-scale = Vector2(1.5, 1.5)
-sprite_frames = SubResource("SpriteFrames_wx8ly")
-animation = &"front3"
-
-[node name="Card4" type="Area2D" parent="."]
-position = Vector2(895, 452)
-scale = Vector2(1.3, 1.3)
-script = ExtResource("4_qoipi")
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Card4"]
-position = Vector2(0, 118.5)
-shape = SubResource("RectangleShape2D_koqqk")
-
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card4"]
-position = Vector2(0, 119)
-scale = Vector2(1.5, 1.5)
-sprite_frames = SubResource("SpriteFrames_wx8ly")
-animation = &"front3"
-
-[node name="Card5" type="Area2D" parent="."]
-position = Vector2(588, 181)
-scale = Vector2(1.3, 1.3)
-script = ExtResource("4_qoipi")
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Card5"]
-position = Vector2(0, 118.5)
-shape = SubResource("RectangleShape2D_koqqk")
-
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card5"]
-position = Vector2(0.769184, 120.769)
-scale = Vector2(1.5, 1.5)
-sprite_frames = SubResource("SpriteFrames_wx8ly")
-animation = &"front3"
-
-[node name="Card6" type="Area2D" parent="."]
-position = Vector2(283, 451)
-scale = Vector2(1.3, 1.3)
-script = ExtResource("4_qoipi")
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Card6"]
-position = Vector2(0, 118.5)
-shape = SubResource("RectangleShape2D_koqqk")
-
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card6"]
-position = Vector2(0, 119)
-scale = Vector2(1.5, 1.5)
-sprite_frames = SubResource("SpriteFrames_wx8ly")
-animation = &"front3"
-
-[node name="Card7" type="Area2D" parent="."]
-position = Vector2(740, 184)
-scale = Vector2(1.3, 1.3)
-script = ExtResource("4_qoipi")
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Card7"]
-position = Vector2(0, 118.5)
-shape = SubResource("RectangleShape2D_koqqk")
-
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card7"]
-position = Vector2(0, 119)
-scale = Vector2(1.5, 1.5)
-sprite_frames = SubResource("SpriteFrames_wx8ly")
-animation = &"front3"
-
-[node name="Card8" type="Area2D" parent="."]
-position = Vector2(745, 453)
-scale = Vector2(1.3, 1.3)
-script = ExtResource("4_qoipi")
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Card8"]
-position = Vector2(0, 118.5)
-shape = SubResource("RectangleShape2D_koqqk")
-
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card8"]
-position = Vector2(0, 119)
-scale = Vector2(1.5, 1.5)
-sprite_frames = SubResource("SpriteFrames_wx8ly")
-animation = &"front3"
-
-[node name="Card9" type="Area2D" parent="."]
-position = Vector2(432, 184)
-scale = Vector2(1.3, 1.3)
-script = ExtResource("4_qoipi")
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Card9"]
-position = Vector2(0, 118.5)
-shape = SubResource("RectangleShape2D_koqqk")
-
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card9"]
-position = Vector2(0, 119)
-scale = Vector2(1.5, 1.5)
-sprite_frames = SubResource("SpriteFrames_wx8ly")
-animation = &"front9"
-
-[node name="Card10" type="Area2D" parent="."]
-position = Vector2(435, 454)
-scale = Vector2(1.3, 1.3)
-script = ExtResource("4_qoipi")
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Card10"]
-position = Vector2(0, 118.5)
-shape = SubResource("RectangleShape2D_koqqk")
-
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card10"]
-position = Vector2(0, 119)
-scale = Vector2(1.5, 1.5)
-sprite_frames = SubResource("SpriteFrames_wx8ly")
-animation = &"front3"
-
-[node name="Card11" type="Area2D" parent="."]
-position = Vector2(126, 178)
-scale = Vector2(1.3, 1.3)
-script = ExtResource("4_qoipi")
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Card11"]
-position = Vector2(0, 118.5)
-shape = SubResource("RectangleShape2D_koqqk")
-
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card11"]
-position = Vector2(0.769184, 120.769)
-scale = Vector2(1.5, 1.5)
-sprite_frames = SubResource("SpriteFrames_wx8ly")
-animation = &"front3"
-
-[node name="Card12" type="Area2D" parent="."]
-position = Vector2(132, 450)
-scale = Vector2(1.3, 1.3)
-script = ExtResource("4_qoipi")
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Card12"]
-position = Vector2(0, 118.5)
-shape = SubResource("RectangleShape2D_koqqk")
-
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card12"]
-position = Vector2(0, 119)
-scale = Vector2(1.5, 1.5)
-sprite_frames = SubResource("SpriteFrames_wx8ly")
-animation = &"front3"
 
 [node name="wall" type="Sprite2D" parent="."]
 position = Vector2(220, 28)
@@ -880,6 +1231,366 @@ texture = ExtResource("8_ys01g")
 position = Vector2(4, 115)
 shape = SubResource("RectangleShape2D_1bec7")
 
+[node name="Card1" type="Area2D" parent="."]
+position = Vector2(711, 328)
+scale = Vector2(1.3, 1.3)
+script = ExtResource("4_qoipi")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Card1"]
+position = Vector2(1.15399, 107.692)
+shape = SubResource("RectangleShape2D_wx8ly")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card1"]
+position = Vector2(6.92305, 107.692)
+scale = Vector2(1.16958, 1.2141)
+sprite_frames = SubResource("SpriteFrames_1bec7")
+animation = &"front9"
+
+[node name="Card2" type="Area2D" parent="."]
+position = Vector2(579, 327)
+scale = Vector2(1.3, 1.3)
+script = ExtResource("4_qoipi")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Card2"]
+position = Vector2(-0.576904, 110.769)
+shape = SubResource("RectangleShape2D_wx8ly")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card2"]
+position = Vector2(-0.769217, 110)
+scale = Vector2(1.12296, 1.2141)
+sprite_frames = SubResource("SpriteFrames_1bec7")
+animation = &"front3"
+
+[node name="Card3" type="Area2D" parent="."]
+position = Vector2(845, 481)
+scale = Vector2(1.3, 1.3)
+script = ExtResource("4_qoipi")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Card3"]
+position = Vector2(1.15399, 107.692)
+shape = SubResource("RectangleShape2D_wx8ly")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card3"]
+position = Vector2(0.769249, 109.231)
+scale = Vector2(1.16958, 1.2141)
+sprite_frames = SubResource("SpriteFrames_1bec7")
+animation = &"front3"
+
+[node name="Card4" type="Area2D" parent="."]
+position = Vector2(177, 477)
+scale = Vector2(1.3, 1.3)
+script = ExtResource("4_qoipi")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Card4"]
+position = Vector2(-0.576904, 110.769)
+shape = SubResource("RectangleShape2D_wx8ly")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card4"]
+position = Vector2(-0.769217, 110)
+scale = Vector2(1.12296, 1.2141)
+sprite_frames = SubResource("SpriteFrames_1bec7")
+animation = &"front3"
+
+[node name="Card5" type="Area2D" parent="."]
+position = Vector2(844, 326)
+scale = Vector2(1.3, 1.3)
+script = ExtResource("4_qoipi")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Card5"]
+position = Vector2(1.15399, 107.692)
+shape = SubResource("RectangleShape2D_wx8ly")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card5"]
+position = Vector2(0.769249, 109.231)
+scale = Vector2(1.16958, 1.2141)
+sprite_frames = SubResource("SpriteFrames_1bec7")
+animation = &"front3"
+
+[node name="Card6" type="Area2D" parent="."]
+position = Vector2(312, 476)
+scale = Vector2(1.3, 1.3)
+script = ExtResource("4_qoipi")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Card6"]
+position = Vector2(-0.576904, 110.769)
+shape = SubResource("RectangleShape2D_wx8ly")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card6"]
+position = Vector2(-0.769217, 110)
+scale = Vector2(1.12296, 1.2141)
+sprite_frames = SubResource("SpriteFrames_1bec7")
+animation = &"front3"
+
+[node name="Card7" type="Area2D" parent="."]
+position = Vector2(173, 327)
+scale = Vector2(1.3, 1.3)
+script = ExtResource("4_qoipi")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Card7"]
+position = Vector2(1.15399, 107.692)
+shape = SubResource("RectangleShape2D_wx8ly")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card7"]
+position = Vector2(0.769249, 109.231)
+scale = Vector2(1.16958, 1.2141)
+sprite_frames = SubResource("SpriteFrames_1bec7")
+animation = &"front3"
+
+[node name="Card8" type="Area2D" parent="."]
+position = Vector2(447, 476)
+scale = Vector2(1.3, 1.3)
+script = ExtResource("4_qoipi")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Card8"]
+position = Vector2(-0.576904, 110.769)
+shape = SubResource("RectangleShape2D_wx8ly")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card8"]
+position = Vector2(-0.769217, 110)
+scale = Vector2(1.12296, 1.2141)
+sprite_frames = SubResource("SpriteFrames_1bec7")
+animation = &"front3"
+
+[node name="Card9" type="Area2D" parent="."]
+position = Vector2(308, 328)
+scale = Vector2(1.3, 1.3)
+script = ExtResource("4_qoipi")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Card9"]
+position = Vector2(1.15399, 107.692)
+shape = SubResource("RectangleShape2D_wx8ly")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card9"]
+position = Vector2(0.769249, 109.231)
+scale = Vector2(1.16958, 1.2141)
+sprite_frames = SubResource("SpriteFrames_1bec7")
+animation = &"front3"
+
+[node name="Card10" type="Area2D" parent="."]
+position = Vector2(584, 478)
+scale = Vector2(1.3, 1.3)
+script = ExtResource("4_qoipi")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Card10"]
+position = Vector2(-0.576904, 110.769)
+shape = SubResource("RectangleShape2D_wx8ly")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card10"]
+position = Vector2(-0.769217, 110)
+scale = Vector2(1.12296, 1.2141)
+sprite_frames = SubResource("SpriteFrames_1bec7")
+animation = &"front3"
+
+[node name="Card11" type="Area2D" parent="."]
+position = Vector2(441, 328)
+scale = Vector2(1.3, 1.3)
+script = ExtResource("4_qoipi")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Card11"]
+position = Vector2(1.15399, 107.692)
+shape = SubResource("RectangleShape2D_wx8ly")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card11"]
+position = Vector2(0.769249, 109.231)
+scale = Vector2(1.16958, 1.2141)
+sprite_frames = SubResource("SpriteFrames_1bec7")
+animation = &"front3"
+
+[node name="Card12" type="Area2D" parent="."]
+position = Vector2(717, 480)
+scale = Vector2(1.3, 1.3)
+script = ExtResource("4_qoipi")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Card12"]
+position = Vector2(-0.576904, 110.769)
+shape = SubResource("RectangleShape2D_wx8ly")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card12"]
+position = Vector2(-0.769217, 110)
+scale = Vector2(1.12296, 1.2141)
+sprite_frames = SubResource("SpriteFrames_1bec7")
+animation = &"front3"
+
+[node name="Card13" type="Area2D" parent="."]
+position = Vector2(710, 22)
+scale = Vector2(1.3, 1.3)
+script = ExtResource("4_qoipi")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Card13"]
+position = Vector2(1.15399, 107.692)
+shape = SubResource("RectangleShape2D_wx8ly")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card13"]
+position = Vector2(6.92305, 107.692)
+scale = Vector2(1.16958, 1.2141)
+sprite_frames = SubResource("SpriteFrames_1bec7")
+animation = &"front9"
+
+[node name="Card14" type="Area2D" parent="."]
+position = Vector2(578, 21)
+scale = Vector2(1.3, 1.3)
+script = ExtResource("4_qoipi")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Card14"]
+position = Vector2(-0.576904, 110.769)
+shape = SubResource("RectangleShape2D_wx8ly")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card14"]
+position = Vector2(-0.769217, 110)
+scale = Vector2(1.12296, 1.2141)
+sprite_frames = SubResource("SpriteFrames_1bec7")
+animation = &"front3"
+
+[node name="Card15" type="Area2D" parent="."]
+position = Vector2(839, 177)
+scale = Vector2(1.3, 1.3)
+script = ExtResource("4_qoipi")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Card15"]
+position = Vector2(1.15399, 107.692)
+shape = SubResource("RectangleShape2D_wx8ly")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card15"]
+position = Vector2(0.769249, 109.231)
+scale = Vector2(1.16958, 1.2141)
+sprite_frames = SubResource("SpriteFrames_1bec7")
+animation = &"front3"
+
+[node name="Card16" type="Area2D" parent="."]
+position = Vector2(171, 173)
+scale = Vector2(1.3, 1.3)
+script = ExtResource("4_qoipi")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Card16"]
+position = Vector2(-0.576904, 110.769)
+shape = SubResource("RectangleShape2D_wx8ly")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card16"]
+position = Vector2(-0.769217, 110)
+scale = Vector2(1.12296, 1.2141)
+sprite_frames = SubResource("SpriteFrames_1bec7")
+animation = &"front3"
+
+[node name="Card17" type="Area2D" parent="."]
+position = Vector2(843, 20)
+scale = Vector2(1.3, 1.3)
+script = ExtResource("4_qoipi")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Card17"]
+position = Vector2(1.15399, 107.692)
+shape = SubResource("RectangleShape2D_wx8ly")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card17"]
+position = Vector2(0.769249, 109.231)
+scale = Vector2(1.16958, 1.2141)
+sprite_frames = SubResource("SpriteFrames_1bec7")
+animation = &"front3"
+
+[node name="Card18" type="Area2D" parent="."]
+position = Vector2(306, 172)
+scale = Vector2(1.3, 1.3)
+script = ExtResource("4_qoipi")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Card18"]
+position = Vector2(-0.576904, 110.769)
+shape = SubResource("RectangleShape2D_wx8ly")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card18"]
+position = Vector2(-0.769217, 110)
+scale = Vector2(1.12296, 1.2141)
+sprite_frames = SubResource("SpriteFrames_1bec7")
+animation = &"front3"
+
+[node name="Card19" type="Area2D" parent="."]
+position = Vector2(172, 21)
+scale = Vector2(1.3, 1.3)
+script = ExtResource("4_qoipi")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Card19"]
+position = Vector2(1.15399, 107.692)
+shape = SubResource("RectangleShape2D_wx8ly")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card19"]
+position = Vector2(0.769249, 109.231)
+scale = Vector2(1.16958, 1.2141)
+sprite_frames = SubResource("SpriteFrames_1bec7")
+animation = &"front3"
+
+[node name="Card20" type="Area2D" parent="."]
+position = Vector2(441, 172)
+scale = Vector2(1.3, 1.3)
+script = ExtResource("4_qoipi")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Card20"]
+position = Vector2(-0.576904, 110.769)
+shape = SubResource("RectangleShape2D_wx8ly")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card20"]
+position = Vector2(-0.769217, 110)
+scale = Vector2(1.12296, 1.2141)
+sprite_frames = SubResource("SpriteFrames_1bec7")
+animation = &"front3"
+
+[node name="Card21" type="Area2D" parent="."]
+position = Vector2(307, 22)
+scale = Vector2(1.3, 1.3)
+script = ExtResource("4_qoipi")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Card21"]
+position = Vector2(1.15399, 107.692)
+shape = SubResource("RectangleShape2D_wx8ly")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card21"]
+position = Vector2(0.769249, 109.231)
+scale = Vector2(1.16958, 1.2141)
+sprite_frames = SubResource("SpriteFrames_1bec7")
+animation = &"front3"
+
+[node name="Card22" type="Area2D" parent="."]
+position = Vector2(578, 174)
+scale = Vector2(1.3, 1.3)
+script = ExtResource("4_qoipi")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Card22"]
+position = Vector2(-0.576904, 110.769)
+shape = SubResource("RectangleShape2D_wx8ly")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card22"]
+position = Vector2(-0.769217, 110)
+scale = Vector2(1.12296, 1.2141)
+sprite_frames = SubResource("SpriteFrames_1bec7")
+animation = &"front3"
+
+[node name="Card23" type="Area2D" parent="."]
+position = Vector2(440, 22)
+scale = Vector2(1.3, 1.3)
+script = ExtResource("4_qoipi")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Card23"]
+position = Vector2(1.15399, 107.692)
+shape = SubResource("RectangleShape2D_wx8ly")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card23"]
+position = Vector2(0.769249, 109.231)
+scale = Vector2(1.16958, 1.2141)
+sprite_frames = SubResource("SpriteFrames_1bec7")
+animation = &"front3"
+
+[node name="Card24" type="Area2D" parent="."]
+position = Vector2(711, 176)
+scale = Vector2(1.3, 1.3)
+script = ExtResource("4_qoipi")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Card24"]
+position = Vector2(-0.576904, 110.769)
+shape = SubResource("RectangleShape2D_wx8ly")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Card24"]
+position = Vector2(-0.769217, 110)
+scale = Vector2(1.12296, 1.2141)
+sprite_frames = SubResource("SpriteFrames_1bec7")
+animation = &"front3"
+
 [node name="Player" type="CharacterBody2D" parent="."]
 position = Vector2(516, 698)
 scale = Vector2(1.75, 1.65625)
@@ -908,7 +1619,7 @@ shape = SubResource("CapsuleShape2D_xydy8")
 [node name="Sprite2D" type="Sprite2D" parent="Player/Cursor"]
 
 [node name="mineFx" type="AudioStreamPlayer2D" parent="Player"]
-position = Vector2(-53.7143, -56.1509)
+position = Vector2(0.571419, 3.8147e-06)
 scale = Vector2(0.571429, 0.603774)
 stream = ExtResource("14_rt1vr")
 
