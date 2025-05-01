@@ -1,6 +1,7 @@
 extends Node2D
 
 signal game_completed
+signal pause_state_changed(is_paused)  # New signal to notify other nodes about pause state
 
 var first_card = null
 var second_card = null
@@ -8,6 +9,7 @@ var can_flip = true
 var matches_found = 0
 var total_pairs = 9
 var has_completed = false
+var is_paused = false  # Track if game is paused
 
 static var GAME_COMPLETED_FLAG = false
 
@@ -25,6 +27,17 @@ var animation_frames = {
 	9: "front9"
 }
 
+# Pause Menu variables
+var pause_panel
+var resume_button
+var restart_button
+var main_menu_button
+var pause_button
+
+# Character reference (will be found at runtime)
+var player_character = null
+var original_player_position = Vector2.ZERO
+
 func _ready():
 	name = "game_manager"
 	add_to_group("game_manager")
@@ -36,10 +49,286 @@ func _ready():
 	
 	initialize_cards()
 	
-	print("Game Manager initialized with " + str(total_pairs) + " pairs for EASY level")
+	# Setup pause menu
+	setup_pause_menu()
+	
+	# Find the player character
+	call_deferred("find_player_character")
+	
+	print("Game Manager initialized with " + str(total_pairs) + " pairs for HARD level")
 	
 	await get_tree().create_timer(0.1).timeout
 	ensure_all_cards_face_down()
+
+func find_player_character():
+	# Try to find the player character using various approaches
+	# Try by group first
+	var characters = get_tree().get_nodes_in_group("player")
+	if characters.size() > 0:
+		player_character = characters[0]
+		original_player_position = player_character.position
+		print("Found player character in 'player' group")
+		return
+	
+	# Try by common names
+	var common_names = ["Player", "Character", "PlayerCharacter", "Cursor", "MainCharacter"]
+	for name in common_names:
+		var node = get_tree().current_scene.find_child(name, true, false)
+		if node:
+			player_character = node
+			original_player_position = player_character.position
+			print("Found player character with name: " + name)
+			return
+	
+	# Try to find nodes with "player" or "character" in their name
+	var scene_nodes = get_tree().get_nodes_in_group("")
+	for node in scene_nodes:
+		if "player" in node.name.to_lower() or "character" in node.name.to_lower() or "cursor" in node.name.to_lower():
+			player_character = node
+			original_player_position = player_character.position
+			print("Found player character with name containing 'player' or 'character': " + node.name)
+			return
+	
+	print("Could not find player character")
+
+func setup_pause_menu():
+	# Create pause button (using text instead of texture)
+	pause_button = Button.new()
+	pause_button.name = "PauseButton"
+	pause_button.text = "||"
+	pause_button.size = Vector2(30, 30)
+	pause_button.position = Vector2(20, 20)
+	
+	# Set up styling
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0.3, 0.3, 0.3, 0.8)  # Gray background
+	style.corner_radius_top_left = 5
+	style.corner_radius_top_right = 5
+	style.corner_radius_bottom_left = 5
+	style.corner_radius_bottom_right = 5
+	pause_button.add_theme_stylebox_override("normal", style)
+	
+	# White text
+	pause_button.add_theme_color_override("font_color", Color(1, 1, 1, 1))
+	pause_button.add_theme_color_override("font_hover_color", Color(1, 1, 1, 1))
+	pause_button.add_theme_color_override("font_pressed_color", Color(0.8, 0.8, 0.8, 1))
+	
+	# Connect signal and add to scene
+	pause_button.pressed.connect(_on_pause_button_pressed)
+	add_child(pause_button)
+	
+	# Create pause panel
+	pause_panel = Panel.new()
+	pause_panel.name = "PausePanel"
+	pause_panel.size = Vector2(300, 250)
+	pause_panel.position = Vector2(get_viewport_rect().size.x/2 - 150, get_viewport_rect().size.y/2 - 125)
+	
+	# Panel styling
+	var panel_style = StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.2, 0.2, 0.2, 0.9)  # Dark gray background
+	panel_style.corner_radius_top_left = 10
+	panel_style.corner_radius_top_right = 10
+	panel_style.corner_radius_bottom_left = 10
+	panel_style.corner_radius_bottom_right = 10
+	panel_style.border_width_left = 2
+	panel_style.border_width_top = 2
+	panel_style.border_width_right = 2
+	panel_style.border_width_bottom = 2
+	panel_style.border_color = Color(0.5, 0.5, 0.5)
+	pause_panel.add_theme_stylebox_override("panel", panel_style)
+	
+	pause_panel.visible = false
+	add_child(pause_panel)
+	
+	# Create panel title
+	var panel_title = Label.new()
+	panel_title.text = "PAUSED"
+	panel_title.position = Vector2(110, 30)
+	panel_title.add_theme_font_size_override("font_size", 24)
+	panel_title.add_theme_color_override("font_color", Color(1, 1, 1))
+	pause_panel.add_child(panel_title)
+	
+	# Create Resume Button
+	resume_button = Button.new()
+	resume_button.text = "Resume"
+	resume_button.size = Vector2(200, 40)
+	resume_button.position = Vector2(50, 80)
+	resume_button.pressed.connect(_on_resume_button_pressed)
+	pause_panel.add_child(resume_button)
+	
+	# Create Restart Button
+	restart_button = Button.new()
+	restart_button.text = "Restart"
+	restart_button.size = Vector2(200, 40)
+	restart_button.position = Vector2(50, 130)
+	restart_button.pressed.connect(_on_restart_button_pressed)
+	pause_panel.add_child(restart_button)
+	
+	# Create Main Menu Button
+	main_menu_button = Button.new()
+	main_menu_button.text = "Main Menu"
+	main_menu_button.size = Vector2(200, 40)
+	main_menu_button.position = Vector2(50, 180)
+	main_menu_button.pressed.connect(_on_main_menu_button_pressed)
+	pause_panel.add_child(main_menu_button)
+	
+	# Style all buttons
+	for button in [resume_button, restart_button, main_menu_button]:
+		var button_style = StyleBoxFlat.new()
+		button_style.bg_color = Color(0.3, 0.3, 0.3)
+		button_style.corner_radius_top_left = 5
+		button_style.corner_radius_top_right = 5
+		button_style.corner_radius_bottom_left = 5
+		button_style.corner_radius_bottom_right = 5
+		
+		button.add_theme_stylebox_override("normal", button_style)
+		button.add_theme_color_override("font_color", Color(1, 1, 1))
+		button.add_theme_color_override("font_hover_color", Color(1, 1, 1))
+	
+		# Hover style
+		var hover_style = StyleBoxFlat.new()
+		hover_style.bg_color = Color(0.4, 0.4, 0.4)  # Slightly lighter when hovering
+		hover_style.corner_radius_top_left = 5
+		hover_style.corner_radius_top_right = 5
+		hover_style.corner_radius_bottom_left = 5
+		hover_style.corner_radius_bottom_right = 5
+		
+		button.add_theme_stylebox_override("hover", hover_style)
+	
+	# Set buttons to not be paused when game is paused
+	pause_button.process_mode = Node.PROCESS_MODE_ALWAYS
+	resume_button.process_mode = Node.PROCESS_MODE_ALWAYS
+	restart_button.process_mode = Node.PROCESS_MODE_ALWAYS
+	main_menu_button.process_mode = Node.PROCESS_MODE_ALWAYS
+	pause_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+
+func _on_pause_button_pressed():
+	print("Pause button pressed")
+	pause_game()
+
+func _on_resume_button_pressed():
+	print("Resume button pressed")
+	resume_game()
+
+func _on_restart_button_pressed():
+	print("Restart button pressed")
+	resume_game()  # First resume to unpause
+	reset_game()   # Then reset
+	reset_player_position()  # Reset player position
+
+func _on_main_menu_button_pressed():
+	print("Main menu button pressed")
+	resume_game()  # First resume to unpause
+	# Go to main menu scene
+	var result = get_tree().change_scene_to_file("res://scenes/MainMenuScene.tscn")
+	if result != OK:
+		print("Failed to change to main menu scene. Trying alternatives...")
+		var alternative_paths = [
+			"res://MainMenuScene.tscn",
+			"res://Scenes/MainMenuScene.tscn",
+			"res://scenes/MainMenu.tscn",
+			"res://MainMenu.tscn"
+		]
+		
+		for path in alternative_paths:
+			result = get_tree().change_scene_to_file(path)
+			if result == OK:
+				print("Successfully changed to: " + path)
+				return
+		
+		print("Could not find main menu scene. Listing available scenes:")
+		var dir = DirAccess.open("res://")
+		if dir:
+			dir.list_dir_begin()
+			var file_name = dir.get_next()
+			while file_name != "":
+				if file_name.ends_with(".tscn"):
+					print("- " + file_name)
+				file_name = dir.get_next()
+			dir.list_dir_end()
+
+func pause_game():
+	print("Pausing game")
+	is_paused = true
+	pause_panel.visible = true
+	# Disable card interaction
+	can_flip = false
+	
+	# Disable character movement by emitting a signal
+	emit_signal("pause_state_changed", true)
+	
+	# Try to directly disable movement on common player controllers
+	if player_character:
+		# Try various common movement control variables
+		if "can_move" in player_character:
+			player_character.can_move = false
+		if "enabled" in player_character:
+			player_character.enabled = false
+		if "active" in player_character:
+			player_character.active = false
+		
+		# Pause any animations if there's an animator
+		if player_character.has_node("AnimationPlayer"):
+			var animator = player_character.get_node("AnimationPlayer")
+			animator.pause()
+		if player_character.has_node("AnimatedSprite2D"):
+			var sprite = player_character.get_node("AnimatedSprite2D")
+			if sprite.is_playing():
+				sprite.pause()
+	
+	# Pause the scene tree but not the UI
+	get_tree().paused = true
+
+func resume_game():
+	print("Resuming game")
+	is_paused = false
+	pause_panel.visible = false
+	# Re-enable card interaction if game not completed
+	if !has_completed:
+		can_flip = true
+	
+	# Enable character movement
+	emit_signal("pause_state_changed", false)
+	
+	# Try to directly enable movement on common player controllers
+	if player_character:
+		# Try various common movement control variables
+		if "can_move" in player_character:
+			player_character.can_move = true
+		if "enabled" in player_character:
+			player_character.enabled = true
+		if "active" in player_character:
+			player_character.active = true
+		
+		# Resume any animations if there's an animator
+		if player_character.has_node("AnimationPlayer"):
+			var animator = player_character.get_node("AnimationPlayer")
+			animator.play()
+		if player_character.has_node("AnimatedSprite2D"):
+			var sprite = player_character.get_node("AnimatedSprite2D")
+			sprite.play()
+	
+	# Unpause the scene tree
+	get_tree().paused = false
+
+func reset_player_position():
+	if player_character and original_player_position != Vector2.ZERO:
+		print("Resetting player position to: " + str(original_player_position))
+		player_character.position = original_player_position
+		
+		# If there's a physics body, reset velocity too
+		if "velocity" in player_character:
+			player_character.velocity = Vector2.ZERO
+		if "linear_velocity" in player_character:
+			player_character.linear_velocity = Vector2.ZERO
+
+# Handle keyboard input for pause
+func _input(event):
+	if event.is_action_pressed("ui_cancel"):  # ESC key
+		if is_paused:
+			resume_game()
+		else:
+			pause_game()
 
 func initialize_cards():
 	var cards = get_tree().get_nodes_in_group("cards")
@@ -110,7 +399,7 @@ func set_card_front_animation(card, value):
 			print("Playing animation directly: " + animation_name)
 
 func _on_card_flipped(card):
-	if !can_flip:
+	if !can_flip or is_paused:
 		return
 		
 	if first_card == null:
@@ -169,7 +458,7 @@ func on_game_completed():
 	
 	show_game_completed_effects()
 	
-	print_rich("[color=yellow]The door is now unlocked! Mine the door to proceed to the VictoryScene.[/color]")
+	print_rich("[color=yellow]The door is now unlocked! Mine the door to proceed to the VICTORY screen![/color]")
 
 func notify_door():
 	var door = get_tree().current_scene.find_child("Door", true, false)
