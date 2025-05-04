@@ -7,13 +7,17 @@ var first_card = null
 var second_card = null
 var can_flip = true
 var matches_found = 0
-var total_pairs = 18  # Changed to 18 pairs for 36 cards
+var total_pairs = 18
 var has_completed = false
-var is_paused = false  # Track if game is paused
+var is_paused = false
+
+# Timer variables
+@onready var timer_label = $TimerLabel
+var time_remaining = 240
+var timer_active = true
 
 static var GAME_COMPLETED_FLAG = false
 
-# Card values for 36 cards (18 pairs)
 var card_values = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 
 				  10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 15, 16, 16, 17, 17, 18, 18]
 
@@ -38,14 +42,12 @@ var animation_frames = {
 	18: "front18"
 }
 
-# Pause Menu variables
 var pause_panel
 var resume_button
 var restart_button
 var main_menu_button
 var pause_button
 
-# Character reference (will be found at runtime)
 var player_character = null
 var original_player_position = Vector2.ZERO
 
@@ -60,20 +62,90 @@ func _ready():
 	
 	initialize_cards()
 	
-	# Setup pause menu
 	setup_pause_menu()
 	
-	# Find the player character
 	call_deferred("find_player_character")
 	
 	print("Game Manager initialized with " + str(total_pairs) + " pairs for HARD level")
 	
+	if timer_label:
+		print("Found existing TimerLabel, initializing timer...")
+		
+		if !timer_label.has_node("Background"):
+			var timer_bg = ColorRect.new()
+			timer_bg.name = "Background"
+			timer_bg.size = Vector2(100, 30)
+			timer_bg.position = Vector2(-5, -5)
+			timer_bg.color = Color(0.2, 0.2, 0.2, 0.8)
+			timer_bg.z_index = -1
+			timer_label.add_child(timer_bg)
+		
+		timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		timer_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		
+		update_timer_display()
+	else:
+		print("ERROR: TimerLabel not found in GameSceneHard! Make sure to add a Label node named TimerLabel.")
+	
 	await get_tree().create_timer(0.1).timeout
 	ensure_all_cards_face_down()
 
+func _process(delta):
+	if timer_active and !has_completed and !is_paused:
+		time_remaining -= delta
+		
+		var current_seconds = int(time_remaining)
+		if current_seconds != int(time_remaining + delta):
+			update_timer_display()
+		
+		if time_remaining <= 0:
+			timer_active = false
+			time_remaining = 0
+			update_timer_display()
+			on_game_over()
+
+func update_timer_display():
+	if !is_instance_valid(timer_label):
+		print("Warning: Timer label is not valid!")
+		return
+		
+	var minutes = floor(time_remaining / 60)
+	var seconds = int(time_remaining) % 60
+	timer_label.text = "%02d:%02d" % [minutes, seconds]
+	
+	if time_remaining <= 30:
+		timer_label.add_theme_color_override("font_color", Color(1, 0.3, 0.3))
+		timer_label.add_theme_font_size_override("font_size", 22)
+	elif time_remaining <= 60:
+		timer_label.add_theme_color_override("font_color", Color(1, 0.8, 0.2)) 
+		timer_label.add_theme_font_size_override("font_size", 20)
+	else:
+		timer_label.add_theme_color_override("font_color", Color(1, 1, 1))
+		timer_label.add_theme_font_size_override("font_size", 18)
+
+func on_game_over():
+	print("Game Over! Time has run out!")
+	can_flip = false
+	
+	var result = get_tree().change_scene_to_file("res://scenes/GameOverScene.tscn")
+	if result != OK:
+		print("Failed to change to game over scene. Trying alternatives...")
+		var alternative_paths = [
+			"res://GameOverScene.tscn",
+			"res://Scenes/GameOverScene.tscn",
+			"res://scenes/gameover.tscn",
+			"res://gameover.tscn"
+		]
+		
+		for path in alternative_paths:
+			result = get_tree().change_scene_to_file(path)
+			if result == OK:
+				print("Successfully changed to: " + path)
+				return
+		
+		print("Could not find game over scene!")
+
 func find_player_character():
-	# Try to find the player character using various approaches
-	# Try by group first
 	var characters = get_tree().get_nodes_in_group("player")
 	if characters.size() > 0:
 		player_character = characters[0]
@@ -81,17 +153,15 @@ func find_player_character():
 		print("Found player character in 'player' group")
 		return
 	
-	# Try by common names
 	var common_names = ["Player", "Character", "PlayerCharacter", "Cursor", "MainCharacter"]
-	for name in common_names:
-		var node = get_tree().current_scene.find_child(name, true, false)
+	for node_name in common_names:
+		var node = get_tree().current_scene.find_child(node_name, true, false)
 		if node:
 			player_character = node
 			original_player_position = player_character.position
-			print("Found player character with name: " + name)
+			print("Found player character with name: " + node_name)
 			return
 	
-	# Try to find nodes with "player" or "character" in their name
 	var scene_nodes = get_tree().get_nodes_in_group("")
 	for node in scene_nodes:
 		if "player" in node.name.to_lower() or "character" in node.name.to_lower() or "cursor" in node.name.to_lower():
@@ -103,16 +173,14 @@ func find_player_character():
 	print("Could not find player character")
 
 func setup_pause_menu():
-	# Create pause button (using text instead of texture)
 	pause_button = Button.new()
 	pause_button.name = "PauseButton"
 	pause_button.text = "||"
 	pause_button.size = Vector2(30, 30)
 	pause_button.position = Vector2(20, 20)
 	
-	# Set up styling
 	var style = StyleBoxFlat.new()
-	style.bg_color = Color(0.3, 0.3, 0.3, 0.8)  # Gray background
+	style.bg_color = Color(0.3, 0.3, 0.3, 0.8)
 	style.corner_radius_top_left = 5
 	style.corner_radius_top_right = 5
 	style.corner_radius_bottom_left = 5
@@ -136,7 +204,7 @@ func setup_pause_menu():
 	
 	# Panel styling
 	var panel_style = StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.2, 0.2, 0.2, 0.9)  # Dark gray background
+	panel_style.bg_color = Color(0.2, 0.2, 0.2, 0.9)
 	panel_style.corner_radius_top_left = 10
 	panel_style.corner_radius_top_right = 10
 	panel_style.corner_radius_bottom_left = 10
@@ -198,7 +266,7 @@ func setup_pause_menu():
 	
 		# Hover style
 		var hover_style = StyleBoxFlat.new()
-		hover_style.bg_color = Color(0.4, 0.4, 0.4)  # Slightly lighter when hovering
+		hover_style.bg_color = Color(0.4, 0.4, 0.4)
 		hover_style.corner_radius_top_left = 5
 		hover_style.corner_radius_top_right = 5
 		hover_style.corner_radius_bottom_left = 5
@@ -206,7 +274,6 @@ func setup_pause_menu():
 		
 		button.add_theme_stylebox_override("hover", hover_style)
 	
-	# Set buttons to not be paused when game is paused
 	pause_button.process_mode = Node.PROCESS_MODE_ALWAYS
 	resume_button.process_mode = Node.PROCESS_MODE_ALWAYS
 	restart_button.process_mode = Node.PROCESS_MODE_ALWAYS
@@ -223,14 +290,13 @@ func _on_resume_button_pressed():
 
 func _on_restart_button_pressed():
 	print("Restart button pressed")
-	resume_game()  # First resume to unpause
-	reset_game()   # Then reset
-	reset_player_position()  # Reset player position
+	resume_game()
+	reset_game() 
+	reset_player_position()
 
 func _on_main_menu_button_pressed():
 	print("Main menu button pressed")
-	resume_game()  # First resume to unpause
-	# Go to main menu scene
+	resume_game()
 	var result = get_tree().change_scene_to_file("res://scenes/MainMenuScene.tscn")
 	if result != OK:
 		print("Failed to change to main menu scene. Trying alternatives...")
@@ -265,12 +331,9 @@ func pause_game():
 	# Disable card interaction
 	can_flip = false
 	
-	# Disable character movement by emitting a signal
 	emit_signal("pause_state_changed", true)
 	
-	# Try to directly disable movement on common player controllers
 	if player_character:
-		# Try various common movement control variables
 		if "can_move" in player_character:
 			player_character.can_move = false
 		if "enabled" in player_character:
@@ -278,7 +341,6 @@ func pause_game():
 		if "active" in player_character:
 			player_character.active = false
 		
-		# Pause any animations if there's an animator
 		if player_character.has_node("AnimationPlayer"):
 			var animator = player_character.get_node("AnimationPlayer")
 			animator.pause()
@@ -287,23 +349,18 @@ func pause_game():
 			if sprite.is_playing():
 				sprite.pause()
 	
-	# Pause the scene tree but not the UI
 	get_tree().paused = true
 
 func resume_game():
 	print("Resuming game")
 	is_paused = false
 	pause_panel.visible = false
-	# Re-enable card interaction if game not completed
 	if !has_completed:
 		can_flip = true
 	
-	# Enable character movement
 	emit_signal("pause_state_changed", false)
 	
-	# Try to directly enable movement on common player controllers
 	if player_character:
-		# Try various common movement control variables
 		if "can_move" in player_character:
 			player_character.can_move = true
 		if "enabled" in player_character:
@@ -311,7 +368,6 @@ func resume_game():
 		if "active" in player_character:
 			player_character.active = true
 		
-		# Resume any animations if there's an animator
 		if player_character.has_node("AnimationPlayer"):
 			var animator = player_character.get_node("AnimationPlayer")
 			animator.play()
@@ -319,7 +375,6 @@ func resume_game():
 			var sprite = player_character.get_node("AnimatedSprite2D")
 			sprite.play()
 	
-	# Unpause the scene tree
 	get_tree().paused = false
 
 func reset_player_position():
@@ -327,15 +382,13 @@ func reset_player_position():
 		print("Resetting player position to: " + str(original_player_position))
 		player_character.position = original_player_position
 		
-		# If there's a physics body, reset velocity too
 		if "velocity" in player_character:
 			player_character.velocity = Vector2.ZERO
 		if "linear_velocity" in player_character:
 			player_character.linear_velocity = Vector2.ZERO
 
-# Handle keyboard input for pause
 func _input(event):
-	if event.is_action_pressed("ui_cancel"):  # ESC key
+	if event.is_action_pressed("ui_cancel"):
 		if is_paused:
 			resume_game()
 		else:
@@ -449,6 +502,7 @@ func _on_card_flipped(card):
 func on_game_completed():
 	print("Congratulations! You found all matches!")
 	has_completed = true
+	timer_active = false  # Stop the timer when game is completed
 	
 	GAME_COMPLETED_FLAG = true
 	print("Set static GAME_COMPLETED_FLAG = true")
@@ -528,6 +582,11 @@ func reset_game():
 	matches_found = 0
 	has_completed = false
 	GAME_COMPLETED_FLAG = false
+	
+	# Reset timer
+	time_remaining = 240
+	timer_active = true
+	update_timer_display()
 	
 	card_values.shuffle()
 	

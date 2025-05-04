@@ -1,8 +1,7 @@
-#this is my game1.gd
 extends Node2D
 
 signal game_completed
-signal pause_state_changed(is_paused)  # New signal to notify other nodes about pause state
+signal pause_state_changed(is_paused)
 
 var first_card = null
 var second_card = null
@@ -11,6 +10,10 @@ var matches_found = 0
 var total_pairs = 6
 var has_completed = false
 var is_paused = false
+
+var timer_label
+var time_remaining = 90
+var timer_active = true
 
 static var GAME_COMPLETED_FLAG = false
 
@@ -47,16 +50,82 @@ func _ready():
 	
 	initialize_cards()
 	
-	# Setup pause menu
 	setup_pause_menu()
+	
+	setup_timer()
 	
 	print("Game Manager initialized with " + str(total_pairs) + " pairs for EASY level")
 	
-	# Find the player character
 	call_deferred("find_player_character")
 	
 	await get_tree().create_timer(0.1).timeout
 	ensure_all_cards_face_down()
+
+func _process(delta):
+	if timer_active and !has_completed and !is_paused:
+		time_remaining -= delta
+		update_timer_display()
+		
+		if time_remaining <= 0:
+			timer_active = false
+			time_remaining = 0
+			update_timer_display()
+			on_game_over()
+
+func setup_timer():
+	#timer label
+	timer_label = Label.new()
+	timer_label.name = "TimerLabel"
+	timer_label.position = Vector2(get_viewport_rect().size.x - 110, 20)
+	timer_label.size = Vector2(100, 30)
+	timer_label.add_theme_font_size_override("font_size", 18)
+	timer_label.add_theme_color_override("font_color", Color(1, 1, 1))
+	
+	#background for the timer
+	var timer_bg = ColorRect.new()
+	timer_bg.name = "TimerBackground"
+	timer_bg.size = Vector2(100, 30)
+	timer_bg.position = Vector2(get_viewport_rect().size.x - 110, 20)
+	timer_bg.color = Color(0.2, 0.2, 0.2, 0.0)
+	
+	add_child(timer_bg)
+	add_child(timer_label)
+	
+	update_timer_display()
+
+func update_timer_display():
+	var minutes = floor(time_remaining / 60)
+	var seconds = int(time_remaining) % 60
+	timer_label.text = "%02d:%02d" % [minutes, seconds]
+	
+	if time_remaining <= 30:
+		timer_label.add_theme_color_override("font_color", Color(1, 0.3, 0.3))
+	elif time_remaining <= 60:
+		timer_label.add_theme_color_override("font_color", Color(1, 0.8, 0.2))
+	else:
+		timer_label.add_theme_color_override("font_color", Color(1, 1, 1))
+
+func on_game_over():
+	print("Game Over! Time has run out!")
+	can_flip = false
+	
+	var result = get_tree().change_scene_to_file("res://scenes/GameOverScene.tscn")
+	if result != OK:
+		print("Failed to change to game over scene. Trying alternatives...")
+		var alternative_paths = [
+			"res://GameOverScene.tscn",
+			"res://Scenes/GameOverScene.tscn",
+			"res://scenes/gameover.tscn",
+			"res://gameover.tscn"
+		]
+		
+		for path in alternative_paths:
+			result = get_tree().change_scene_to_file(path)
+			if result == OK:
+				print("Successfully changed to: " + path)
+				return
+		
+		print("Could not find game over scene!")
 
 func find_player_character():
 	# Try to find the player character using various approaches
@@ -68,17 +137,15 @@ func find_player_character():
 		print("Found player character in 'player' group")
 		return
 	
-	# Try by common names
 	var common_names = ["Player", "Character", "PlayerCharacter", "Cursor", "MainCharacter"]
-	for name in common_names:
-		var node = get_tree().current_scene.find_child(name, true, false)
+	for node_name in common_names:
+		var node = get_tree().current_scene.find_child(node_name, true, false)
 		if node:
 			player_character = node
 			original_player_position = player_character.position
-			print("Found player character with name: " + name)
+			print("Found player character with name: " + node_name)
 			return
 	
-	# Try to find nodes with "player" or "character" in their name
 	var scene_nodes = get_tree().get_nodes_in_group("")
 	for node in scene_nodes:
 		if "player" in node.name.to_lower() or "character" in node.name.to_lower() or "cursor" in node.name.to_lower():
@@ -440,6 +507,7 @@ func _on_card_flipped(card):
 func on_game_completed():
 	print("Congratulations! You found all matches!")
 	has_completed = true
+	timer_active = false  # Stop the timer when game is completed
 	
 	GAME_COMPLETED_FLAG = true
 	print("Set static GAME_COMPLETED_FLAG = true")
@@ -519,6 +587,11 @@ func reset_game():
 	matches_found = 0
 	has_completed = false
 	GAME_COMPLETED_FLAG = false
+	
+	# Reset timer
+	time_remaining = 120
+	timer_active = true
+	update_timer_display()
 	
 	card_values.shuffle()
 	

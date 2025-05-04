@@ -1,4 +1,4 @@
-[gd_scene load_steps=75 format=3 uid="uid://u5yphwip023s"]
+[gd_scene load_steps=76 format=3 uid="uid://u5yphwip023s"]
 
 [ext_resource type="Script" uid="uid://bip2itdmqm7fx" path="res://scripts/game3.gd" id="1_c11ch"]
 [ext_resource type="Texture2D" uid="uid://4la2rcirci3n" path="res://assets/tiles/Dungeon_Tileset.png" id="2_bt3c6"]
@@ -17,6 +17,7 @@
 [ext_resource type="AudioStream" uid="uid://cvtpibaxtq527" path="res://assets/audio/MineFx.mp3" id="13_2tmnn"]
 [ext_resource type="Texture2D" uid="uid://dgj3eyr6jkgu" path="res://assets/mediumDoor.png" id="14_2tmnn"]
 [ext_resource type="AudioStream" uid="uid://cbj626v8b43dq" path="res://assets/audio/GameSceneHardMusic.mp3" id="15_80cbu"]
+[ext_resource type="Script" uid="uid://v1dxi7cwh6r5" path="res://scripts/timer_label2.gd" id="18_vsqdx"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_n7dem"]
 texture = ExtResource("2_bt3c6")
@@ -1423,3 +1424,8 @@ texture = ExtResource("14_2tmnn")
 [node name="BgMusic" type="AudioStreamPlayer2D" parent="."]
 stream = ExtResource("15_80cbu")
 autoplay = true
+
+[node name="TimerLabel" type="Label" parent="."]
+offset_right = 40.0
+offset_bottom = 23.0
+script = ExtResource("18_vsqdx")

@@ -1,4 +1,4 @@
-[gd_scene load_steps=68 format=3 uid="uid://c1ecgqv5vm6di"]
+[gd_scene load_steps=69 format=3 uid="uid://c1ecgqv5vm6di"]
 
 [ext_resource type="Script" uid="uid://ce1abumip4534" path="res://scripts/door_script.gd" id="2_dfj51"]
 [ext_resource type="Texture2D" uid="uid://ccg5qlod32ha7" path="res://assets/woodfloor1.png" id="2_ys01g"]
@@ -15,12 +15,13 @@
 [ext_resource type="Script" uid="uid://ddqsrlwmoy5gx" path="res://scripts/cursor.gd" id="11_xydy8"]
 [ext_resource type="AudioStream" uid="uid://dl4gko88dvka3" path="res://assets/audio/mainmenuBg.mp3" id="14_qoipi"]
 [ext_resource type="AudioStream" uid="uid://cvtpibaxtq527" path="res://assets/audio/MineFx.mp3" id="14_rt1vr"]
+[ext_resource type="Script" uid="uid://f7fj6out7ran" path="res://scripts/timer_label.gd" id="16_koqqk"]
 
 [sub_resource type="GDScript" id="GDScript_ys01g"]
 script/source = "extends Node2D
 
 signal game_completed
-signal pause_state_changed(is_paused)  # New signal to notify other nodes about pause state
+signal pause_state_changed(is_paused)
 
 var first_card = null
 var second_card = null
@@ -49,14 +50,12 @@ var animation_frames = {
 	12: \"front12\"
 }
 
-# Pause Menu variables
 var pause_panel
 var resume_button
 var restart_button
 var main_menu_button
 var pause_button
 
-# Character reference (will be found at runtime)
 var player_character = null
 var original_player_position = Vector2.ZERO
 
@@ -71,10 +70,8 @@ func _ready():
 	
 	initialize_cards()
 	
-	# Setup pause menu
 	setup_pause_menu()
 	
-	# Find the player character
 	call_deferred(\"find_player_character\")
 	
 	print(\"Game Manager initialized with \" + str(total_pairs) + \" pairs for MEDIUM level\")
@@ -83,8 +80,6 @@ func _ready():
 	ensure_all_cards_face_down()
 
 func find_player_character():
-	# Try to find the player character using various approaches
-	# Try by group first
 	var characters = get_tree().get_nodes_in_group(\"player\")
 	if characters.size() > 0:
 		player_character = characters[0]
@@ -92,17 +87,15 @@ func find_player_character():
 		print(\"Found player character in 'player' group\")
 		return
 	
-	# Try by common names
 	var common_names = [\"Player\", \"Character\", \"PlayerCharacter\", \"Cursor\", \"MainCharacter\"]
-	for name in common_names:
-		var node = get_tree().current_scene.find_child(name, true, false)
+	for node_name in common_names:
+		var node = get_tree().current_scene.find_child(node_name, true, false)
 		if node:
 			player_character = node
 			original_player_position = player_character.position
-			print(\"Found player character with name: \" + name)
+			print(\"Found player character with name: \" + node_name)
 			return
 	
-	# Try to find nodes with \"player\" or \"character\" in their name
 	var scene_nodes = get_tree().get_nodes_in_group(\"\")
 	for node in scene_nodes:
 		if \"player\" in node.name.to_lower() or \"character\" in node.name.to_lower() or \"cursor\" in node.name.to_lower():
@@ -114,16 +107,14 @@ func find_player_character():
 	print(\"Could not find player character\")
 
 func setup_pause_menu():
-	# Create pause button (using text instead of texture)
 	pause_button = Button.new()
 	pause_button.name = \"PauseButton\"
 	pause_button.text = \"||\"
 	pause_button.size = Vector2(30, 30)
 	pause_button.position = Vector2(20, 20)
 	
-	# Set up styling
 	var style = StyleBoxFlat.new()
-	style.bg_color = Color(0.3, 0.3, 0.3, 0.8)  # Gray background
+	style.bg_color = Color(0.3, 0.3, 0.3, 0.8)
 	style.corner_radius_top_left = 5
 	style.corner_radius_top_right = 5
 	style.corner_radius_bottom_left = 5
@@ -139,7 +130,7 @@ func setup_pause_menu():
 	pause_button.pressed.connect(_on_pause_button_pressed)
 	add_child(pause_button)
 	
-	# Create pause panel
+	#pause panel
 	pause_panel = Panel.new()
 	pause_panel.name = \"PausePanel\"
 	pause_panel.size = Vector2(300, 250)
@@ -147,7 +138,7 @@ func setup_pause_menu():
 	
 	# Panel styling
 	var panel_style = StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.2, 0.2, 0.2, 0.9)  # Dark gray background
+	panel_style.bg_color = Color(0.2, 0.2, 0.2, 0.9)
 	panel_style.corner_radius_top_left = 10
 	panel_style.corner_radius_top_right = 10
 	panel_style.corner_radius_bottom_left = 10
@@ -162,7 +153,7 @@ func setup_pause_menu():
 	pause_panel.visible = false
 	add_child(pause_panel)
 	
-	# Create panel title
+	#panel title
 	var panel_title = Label.new()
 	panel_title.text = \"PAUSED\"
 	panel_title.position = Vector2(110, 30)
@@ -170,7 +161,7 @@ func setup_pause_menu():
 	panel_title.add_theme_color_override(\"font_color\", Color(1, 1, 1))
 	pause_panel.add_child(panel_title)
 	
-	# Create Resume Button
+	#Resume Button
 	resume_button = Button.new()
 	resume_button.text = \"Resume\"
 	resume_button.size = Vector2(200, 40)
@@ -178,7 +169,7 @@ func setup_pause_menu():
 	resume_button.pressed.connect(_on_resume_button_pressed)
 	pause_panel.add_child(resume_button)
 	
-	# Create Restart Button
+	#Restart Button
 	restart_button = Button.new()
 	restart_button.text = \"Restart\"
 	restart_button.size = Vector2(200, 40)
@@ -186,7 +177,7 @@ func setup_pause_menu():
 	restart_button.pressed.connect(_on_restart_button_pressed)
 	pause_panel.add_child(restart_button)
 	
-	# Create Main Menu Button
+	#Main Menu Button
 	main_menu_button = Button.new()
 	main_menu_button.text = \"Main Menu\"
 	main_menu_button.size = Vector2(200, 40)
@@ -209,7 +200,7 @@ func setup_pause_menu():
 	
 		# Hover style
 		var hover_style = StyleBoxFlat.new()
-		hover_style.bg_color = Color(0.4, 0.4, 0.4)  # Slightly lighter when hovering
+		hover_style.bg_color = Color(0.4, 0.4, 0.4)
 		hover_style.corner_radius_top_left = 5
 		hover_style.corner_radius_top_right = 5
 		hover_style.corner_radius_bottom_left = 5
@@ -217,7 +208,7 @@ func setup_pause_menu():
 		
 		button.add_theme_stylebox_override(\"hover\", hover_style)
 	
-	# Set buttons to not be paused when game is paused
+	# Set buttons
 	pause_button.process_mode = Node.PROCESS_MODE_ALWAYS
 	resume_button.process_mode = Node.PROCESS_MODE_ALWAYS
 	restart_button.process_mode = Node.PROCESS_MODE_ALWAYS
@@ -234,14 +225,13 @@ func _on_resume_button_pressed():
 
 func _on_restart_button_pressed():
 	print(\"Restart button pressed\")
-	resume_game()  # First resume to unpause
-	reset_game()   # Then reset
-	reset_player_position()  # Reset player position
+	resume_game()
+	reset_game()
+	reset_player_position()
 
 func _on_main_menu_button_pressed():
 	print(\"Main menu button pressed\")
-	resume_game()  # First resume to unpause
-	# Go to main menu scene
+	resume_game()
 	var result = get_tree().change_scene_to_file(\"res://scenes/MainMenuScene.tscn\")
 	if result != OK:
 		print(\"Failed to change to main menu scene. Trying alternatives...\")
@@ -273,15 +263,11 @@ func pause_game():
 	print(\"Pausing game\")
 	is_paused = true
 	pause_panel.visible = true
-	# Disable card interaction
 	can_flip = false
 	
-	# Disable character movement by emitting a signal
 	emit_signal(\"pause_state_changed\", true)
 	
-	# Try to directly disable movement on common player controllers
 	if player_character:
-		# Try various common movement control variables
 		if \"can_move\" in player_character:
 			player_character.can_move = false
 		if \"enabled\" in player_character:
@@ -289,7 +275,6 @@ func pause_game():
 		if \"active\" in player_character:
 			player_character.active = false
 		
-		# Pause any animations if there's an animator
 		if player_character.has_node(\"AnimationPlayer\"):
 			var animator = player_character.get_node(\"AnimationPlayer\")
 			animator.pause()
@@ -298,23 +283,20 @@ func pause_game():
 			if sprite.is_playing():
 				sprite.pause()
 	
-	# Pause the scene tree but not the UI
+	# Pause the scene tree
 	get_tree().paused = true
 
 func resume_game():
 	print(\"Resuming game\")
 	is_paused = false
 	pause_panel.visible = false
-	# Re-enable card interaction if game not completed
 	if !has_completed:
 		can_flip = true
 	
 	# Enable character movement
 	emit_signal(\"pause_state_changed\", false)
 	
-	# Try to directly enable movement on common player controllers
 	if player_character:
-		# Try various common movement control variables
 		if \"can_move\" in player_character:
 			player_character.can_move = true
 		if \"enabled\" in player_character:
@@ -322,7 +304,7 @@ func resume_game():
 		if \"active\" in player_character:
 			player_character.active = true
 		
-		# Resume any animations if there's an animator
+		# Resume
 		if player_character.has_node(\"AnimationPlayer\"):
 			var animator = player_character.get_node(\"AnimationPlayer\")
 			animator.play()
@@ -330,7 +312,6 @@ func resume_game():
 			var sprite = player_character.get_node(\"AnimatedSprite2D\")
 			sprite.play()
 	
-	# Unpause the scene tree
 	get_tree().paused = false
 
 func reset_player_position():
@@ -338,15 +319,13 @@ func reset_player_position():
 		print(\"Resetting player position to: \" + str(original_player_position))
 		player_character.position = original_player_position
 		
-		# If there's a physics body, reset velocity too
 		if \"velocity\" in player_character:
 			player_character.velocity = Vector2.ZERO
 		if \"linear_velocity\" in player_character:
 			player_character.linear_velocity = Vector2.ZERO
 
-# Handle keyboard input for pause
 func _input(event):
-	if event.is_action_pressed(\"ui_cancel\"):  # ESC key
+	if event.is_action_pressed(\"ui_cancel\"):
 		if is_paused:
 			resume_game()
 		else:
@@ -1626,3 +1605,10 @@ stream = ExtResource("14_rt1vr")
 [node name="BgMusic" type="AudioStreamPlayer2D" parent="."]
 stream = ExtResource("14_qoipi")
 autoplay = true
+
+[node name="TimerLabel" type="Label" parent="."]
+offset_left = 886.0
+offset_top = 14.0
+offset_right = 970.0
+offset_bottom = 37.0
+script = ExtResource("16_koqqk")

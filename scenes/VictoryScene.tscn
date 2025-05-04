@@ -1,6 +1,6 @@
 [gd_scene load_steps=4 format=3 uid="uid://djyrvyosj6fo3"]
 
-[ext_resource type="Script" uid="uid://bpf7styjxcjyv" path="res://scenes/victory_scene.gd" id="1_1diju"]
+[ext_resource type="Script" uid="uid://bpf7styjxcjyv" path="res://scripts/victory_scene.gd" id="1_1diju"]
 [ext_resource type="Texture2D" uid="uid://b23b6p5wljs2j" path="res://assets/VictoryScene.jpg" id="2_vwvuo"]
 [ext_resource type="AudioStream" uid="uid://28dxnwdn3le0" path="res://assets/audio/VictorySceneMusic.mp3" id="3_1diju"]
 
@@ -17,6 +17,7 @@ offset_left = 400.0
 offset_top = 647.0
 offset_right = 607.0
 offset_bottom = 756.0
+metadata/_edit_use_anchors_ = true
 
 [node name="StartButton" type="Button" parent="VBoxContainer"]
 layout_mode = 2

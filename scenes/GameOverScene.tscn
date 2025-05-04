@@ -1,0 +1,15 @@
+[gd_scene load_steps=3 format=3 uid="uid://cua3n8ckbxvvi"]
+
+[ext_resource type="Script" uid="uid://chlf5whea5ief" path="res://scripts/game_over_scene.gd" id="1_tgqjs"]
+[ext_resource type="AudioStream" uid="uid://duecncitef7ge" path="res://assets/audio/loser.mp3" id="3_tgqjs"]
+
+[node name="GameOverScene" type="Node2D"]
+script = ExtResource("1_tgqjs")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+position = Vector2(513.75, 383.5)
+scale = Vector2(0.888169, 0.784694)
+
+[node name="BgMusic" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("3_tgqjs")
+autoplay = true

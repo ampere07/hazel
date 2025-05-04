@@ -12,7 +12,7 @@ var cursor_direction = Vector2.RIGHT
 func _ready():
 	update_cursor_position()
 
-func _physics_process(delta):
+func _physics_process(_delta):
 	velocity = Vector2.ZERO
 	is_moving = false
 	

@@ -655,7 +655,7 @@ position = Vector2(259, -356)
 shape = SubResource("RectangleShape2D_xs4ih")
 
 [node name="Card1" type="Area2D" parent="."]
-position = Vector2(712, 204)
+position = Vector2(703, 204)
 scale = Vector2(1.3, 1.3)
 script = ExtResource("9_m2r1n")
 
